@@ -5,30 +5,33 @@
 // El thread principal realiza lectura de teclado dentro de una ventana
 //
 // Autor: CB
-
+#include <stdlib.h>
 #include <stdio.h>  
 #include <pthread.h>  
 #include <ncurses.h>
 #include <time.h>
 #include <string.h>
-
+#include <mqueue.h>
 
 //Esta función mostrará el banner en un thread
 void *banner(void *param);
 
-//Esta función mostrará el reloj en un thread
-void *reloj(void *param);
-
+void *receiveMessage(void *param);
 
 /* Programa principal */
 int main(int argc, char *argv[]) {  
-    pthread_t t_reloj, t_banner;
-    WINDOW *win;
-    WINDOW *winMessage;
-    char texto[200]="";
-    
-	mqd_t cola;
-	char buff[1024+10];
+
+   if (argc<2)
+   {   perror("uso: send-mq <nombre-cola>\n"); exit(1); }
+
+    mqd_t queueSend;
+    pthread_t t_receiveMessage;
+
+    WINDOW *windowSendMessage;
+    char text[200]="";
+
+   if ((queueSend = mq_open (argv[1],  O_RDWR )) == -1) 
+    { perror("No se puede acceder a la cola de mensajes"); exit(1); }
 
     //Prepara pantalla
     initscr(); // Inicializar Ncurses
@@ -38,28 +41,70 @@ int main(int argc, char *argv[]) {
 
     //Crea una ventana donde ingresar el texto
     
-    win=newwin(12,80,12,0);
-    winMessage=newwin(12,80,0,0);      
-    box(win,0,0);
-    box(winMessage,0,0);
-    mvwprintw(win, 1, 2, "Ingrese texto:"); 
-    wrefresh(win);
-    wrefresh(winMessage); 
+    windowSendMessage=newwin(12,80,12,0);
+    box(windowSendMessage,0,0);
 
-	cola = mq_open (argv[1], O_RDWR);
-	me_receive(cola,buff,sizeof(buff)+10,0)
+    mvwprintw(windowSendMessage, 1, 2, "Ingrese texto:"); 
+    wrefresh(windowSendMessage);
+
+    pthread_create(&t_receiveMessage,NULL,(void *)receiveMessage,(void *)argv[1]); //dispara receiveMessage
 
     //lee texto en la ventana, hasta el FIN
-    while (strcmp(texto,"FIN")!=0) {
-       wgetstr(win, (char*)texto);
-       mvwprintw(winMessage, 1, 2, buff);
-	wrefresh(winMessage);
+    while (strcmp(text,"FIN")!=0) {
+        wgetstr(windowSendMessage, (char*)text);
+        if (mq_send(queueSend, text, strlen (text),0) == -1) {
+            perror("Error al enviar el mensaje");
+            exit(1); 
+        }
     }
 
-    werase(win);
+    pthread_cancel(t_receiveMessage);
+
+    werase(windowSendMessage);
     endwin(); // Finalizar Ncurses y termina
     return 0;  
-}  
+}
+
+void *receiveMessage(void *param) {
+    mqd_t queueReceive;
+    const char *queueName = param;
+    char buff[1024];
+
+    WINDOW *windowReceiveMessage;
+    windowReceiveMessage=newwin(12,80,0,0);
+    box(windowReceiveMessage,0,0);
+    wrefresh(windowReceiveMessage); 
+
+    if ((queueReceive = mq_open (queueName,  O_RDWR)) == -1) {
+        perror("No se puede acceder a la cola de mensajes");
+        exit(1); 
+    }
+
+
+    int row = 1;
+    while (1) {
+        ssize_t n = mq_receive(queueReceive, buff, sizeof(buff) - 1, 0);
+        if (n == -1) {
+            perror("Error al recibir el mensaje");
+            exit(1);
+        }
+        buff[n] = '\0';
+
+        mvwprintw(windowReceiveMessage, row, 2, "%s", buff);
+        wrefresh(windowReceiveMessage);
+
+        row++;
+        if (row >= 11) {
+            row = 1;
+            werase(windowReceiveMessage);
+            box(windowReceiveMessage, 0, 0);
+        }
+        
+    }
+}
+
+
+
 
 // Función que muestra el banner en la esquina superior izquierda
 void *banner(void *param) {  
@@ -68,27 +113,12 @@ char cartel[] = "Sistemas Operativos ";
 char s1[100];
 
     // cada un segundo actualiza el banner
-    while (1){
-      strncpy(s1, &cartel[i], sizeof(cartel)); //desplaza texto 1 caracter
-      mvaddstr(0, 0,s1 ); //muestra el banner
-      refresh(); // refresca pantalla      
-      i=(i+1)%(sizeof(cartel)-1); //incrementa posición
-      usleep(500000); // espera medio segundo
+    while (1) {
+        strncpy(s1, &cartel[i], sizeof(cartel)); //desplaza texto 1 caracter
+        mvaddstr(0, 0,s1 ); //muestra el banner
+        refresh(); // refresca pantalla      
+        i=(i+1)%(sizeof(cartel)-1); //incrementa posición
+        usleep(500000); // espera medio segundo
     }  
     pthread_exit(0);   
 }
-
-// Función que muestra el reloj en la esquina superior derecha
-void *reloj(void *param) {  
-
-    time_t rawtime;
- 
-    // cada un segundo actualiza el reloj
-    while (1){
-      time(&rawtime);
-      mvaddstr(0, 50,ctime(&rawtime) ); //muestra la hora
-      sleep(1); // espera un segundo
-      refresh(); // refresca pantalla      
-    }  
-    pthread_exit(0);   
-}  
