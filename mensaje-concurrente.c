@@ -21,8 +21,8 @@ void *receiveMessage(void *param);
 /* Programa principal */
 int main(int argc, char *argv[]) {  
 
-   if (argc<2)
-   {   perror("uso: send-mq <nombre-cola>\n"); exit(1); }
+   if (argc<3)
+   {   perror("uso: send-mq <nombre-cola-send> <nombre-cola-receive>\n"); exit(1); }
 
     mqd_t queueSend;
     pthread_t t_receiveMessage;
@@ -47,7 +47,7 @@ int main(int argc, char *argv[]) {
     mvwprintw(windowSendMessage, 1, 2, "Ingrese texto:"); 
     wrefresh(windowSendMessage);
 
-    pthread_create(&t_receiveMessage,NULL,(void *)receiveMessage,(void *)argv[1]); //dispara receiveMessage
+    pthread_create(&t_receiveMessage,NULL,(void *)receiveMessage,(void *)argv[2]); //dispara receiveMessage
 
     //lee texto en la ventana, hasta el FIN
     while (strcmp(text,"FIN")!=0) {
